@@ -14,6 +14,7 @@ AVAILABLE_LLMS = [
     "claude-3-5-sonnet-20240620",
     "claude-3-5-sonnet-20241022",
     # OpenAI models
+    "gpt-5.3-codex",
     "gpt-4o-mini",
     "gpt-4o-mini-2024-07-18",
     "gpt-4o",
