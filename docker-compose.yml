@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  ai-scientist-v2:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    image: ai-scientist-v2:latest
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - S2_API_KEY=${S2_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # You can add Bedrock specific AWS keys here if needed
+      # - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      # - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      # - AWS_REGION_NAME=${AWS_REGION_NAME}
+    volumes:
+      - ./experiments:/app/AI-Scientist-v2/experiments
+      - ./ai_scientist/ideas:/app/AI-Scientist-v2/ai_scientist/ideas
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    stdin_open: true # Allows running bash interactively
+    tty: true        # Gives a pseudo-TTY
