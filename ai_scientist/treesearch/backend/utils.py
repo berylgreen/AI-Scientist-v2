@@ -26,6 +26,7 @@ def backoff_create(
     try:
         return create_fn(*args, **kwargs)
     except retry_exceptions as e:
+        print(f"\nCRITICAL DEBUG BACKOFF EXCEPTION: {type(e).__name__}: {e}\n", flush=True)
         logger.info(f"Backoff exception: {e}")
         return False
 
