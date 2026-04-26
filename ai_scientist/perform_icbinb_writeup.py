@@ -867,16 +867,17 @@ def perform_writeup(
     pdf_file = osp.join(base_folder, f"{osp.basename(base_folder)}.pdf")
     latex_folder = osp.join(base_folder, "latex")
 
-    # Cleanup any previous latex folder and pdf
-    if osp.exists(latex_folder):
-        shutil.rmtree(latex_folder)
-    if osp.exists(pdf_file):
-        os.remove(pdf_file)
+    # Cleanup any previous latex folder and pdf (only when rewriting)
+    if not no_writing:
+        if osp.exists(latex_folder):
+            shutil.rmtree(latex_folder)
+        if osp.exists(pdf_file):
+            os.remove(pdf_file)
 
-    # Remove any previous reflection PDFs
-    for old_pdf in os.listdir(base_folder):
-        if old_pdf.endswith(".pdf") and "reflection" in old_pdf:
-            os.remove(osp.join(base_folder, old_pdf))
+        # Remove any previous reflection PDFs
+        for old_pdf in os.listdir(base_folder):
+            if old_pdf.endswith(".pdf") and "reflection" in old_pdf:
+                os.remove(osp.join(base_folder, old_pdf))
 
     try:
         idea_text = load_idea_text(base_folder)

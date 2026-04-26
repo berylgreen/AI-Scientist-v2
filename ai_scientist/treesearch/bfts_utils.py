@@ -2,6 +2,7 @@ import os
 import os.path as osp
 import shutil
 import yaml
+from ai_scientist.model_config import DEFAULT_MODEL
 
 
 def idea_to_markdown(data: dict, output_path: str, load_code: str) -> None:
@@ -42,6 +43,19 @@ def idea_to_markdown(data: dict, output_path: str, load_code: str) -> None:
                 f.write(f"```python\n{code}\n```\n\n")
 
 
+def _override_models_in_config(config: dict, model_name: str) -> None:
+    """
+    Recursively override all 'model' keys in the config dict with model_name.
+    This ensures that the DEFAULT_MODEL env var takes precedence over any
+    hardcoded model names in bfts_config.yaml.
+    """
+    for key, value in config.items():
+        if isinstance(value, dict):
+            _override_models_in_config(value, model_name)
+        elif key == "model" and isinstance(value, str):
+            config[key] = model_name
+
+
 def edit_bfts_config_file(config_path: str, idea_dir: str, idea_path: str) -> str:
     """
     Edit the bfts_config.yaml file to point to the idea.md file
@@ -61,6 +75,9 @@ def edit_bfts_config_file(config_path: str, idea_dir: str, idea_path: str) -> st
     config["desc_file"] = idea_path
     config["workspace_dir"] = idea_dir
 
+    # Override all model fields with DEFAULT_MODEL from environment
+    _override_models_in_config(config, DEFAULT_MODEL)
+
     # make an empty data directory
     data_dir = osp.join(idea_dir, "data")
     os.makedirs(data_dir, exist_ok=True)
@@ -74,3 +91,4 @@ def edit_bfts_config_file(config_path: str, idea_dir: str, idea_path: str) -> st
     with open(run_config_path, "w") as f:
         yaml.dump(config, f)
     return run_config_path
+

@@ -8,6 +8,7 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..",
 sys.path.insert(0, parent_dir)
 from ai_scientist.llm import get_response_from_llm, extract_json_between_markers
 from ai_scientist.treesearch.backend import get_ai_client
+from ai_scientist.model_config import DEFAULT_MODEL
 
 
 report_summarizer_sys_msg = """You are an expert machine learning researcher.
@@ -269,7 +270,7 @@ def annotate_history(journal, cfg=None):
                     if cfg.agent.get("summary", None) is not None:
                         model = cfg.agent.summary.model
                     else:
-                        model = "gpt-5.3-codex"
+                        model = DEFAULT_MODEL
                     client = get_ai_client(model)
                     response = get_response_from_llm(
                         overall_plan_summarizer_prompt.format(
@@ -341,7 +342,7 @@ def overall_summarize(journals, cfg=None):
             if cfg.agent.get("summary", None) is not None:
                 model = cfg.agent.summary.get("model", "")
             else:
-                model = "gpt-5.3-codex"
+                model = DEFAULT_MODEL
             client = get_ai_client(model)
             summary_json = get_stage_summary(journal, stage_name, model, client)
             return summary_json

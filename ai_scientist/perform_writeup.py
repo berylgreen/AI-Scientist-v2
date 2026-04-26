@@ -465,11 +465,9 @@ def perform_writeup(
     base_pdf_file = osp.join(base_folder, f"{osp.basename(base_folder)}")
     latex_folder = osp.join(base_folder, "latex")
 
-    # Cleanup any previous latex folder and pdf
-    if osp.exists(latex_folder):
+    # Cleanup any previous latex folder and pdf (only when rewriting)
+    if not no_writing and osp.exists(latex_folder):
         shutil.rmtree(latex_folder)
-    # if osp.exists(pdf_file):
-    #     os.remove(pdf_file)
 
     try:
         # Load idea text

@@ -7,6 +7,7 @@ from ai_scientist.utils.token_tracker import track_token_usage
 import anthropic
 import backoff
 import openai
+from ai_scientist.model_config import DEFAULT_MODEL
 
 MAX_NUM_TOKENS = 4096
 
@@ -14,7 +15,6 @@ AVAILABLE_LLMS = [
     "claude-3-5-sonnet-20240620",
     "claude-3-5-sonnet-20241022",
     # OpenAI models
-    "gpt-5.3-codex",
     "gpt-4o-mini",
     "gpt-4o-mini-2024-07-18",
     "gpt-4o",
@@ -72,6 +72,10 @@ AVAILABLE_LLMS = [
     "ollama/deepseek-r1:70b",
     "ollama/deepseek-r1:671b",
 ]
+
+# Automatically include the user's DEFAULT_MODEL in the whitelist
+if DEFAULT_MODEL and DEFAULT_MODEL not in AVAILABLE_LLMS:
+    AVAILABLE_LLMS.append(DEFAULT_MODEL)
 
 
 # Get N responses from a single message, used for ensembling.

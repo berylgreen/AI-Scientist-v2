@@ -9,6 +9,7 @@ services:
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-gpt-5.3-codex}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - S2_API_KEY=${S2_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}

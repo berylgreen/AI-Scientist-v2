@@ -27,13 +27,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-full \
     poppler-utils \
     chktex \
+    fonts-noto-cjk \
+    && fc-cache -fv \
     && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip
 RUN pip install --no-cache-dir --upgrade pip==24.2
 
-# Install PyTorch with CUDA 12.4 support
-RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+# Install PyTorch (CPU-only to save disk space; switch to cu124 if GPU is available)
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 
 # Copy requirements and install
 COPY requirements.txt .
