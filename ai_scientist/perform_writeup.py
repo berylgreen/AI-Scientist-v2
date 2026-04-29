@@ -22,6 +22,33 @@ from ai_scientist.perform_vlm_review import generate_vlm_img_review
 from ai_scientist.vlm import create_client as create_vlm_client
 
 
+CHINESE_PLACEHOLDER_MAP = {
+    "TITLE HERE": "在此填写标题",
+    "ABSTRACT HERE": "在此填写摘要",
+    "INTRO HERE": "在此填写引言",
+    "RELATED WORK HERE": "在此填写相关工作",
+    "BACKGROUND HERE": "在此填写背景",
+    "METHOD HERE": "在此填写方法",
+    "EXPERIMENTAL SETUP HERE": "在此填写实验设置",
+    "RESULTS HERE": "在此填写实验结果",
+    "PLEASE FILL IN CAPTION HERE": "在此填写图注",
+    "CONCLUSIONS HERE": "在此填写结论",
+    "APPENDIX TEXT": "在此填写附录内容",
+}
+
+
+def is_chinese_language(language: str) -> bool:
+    normalized = (language or "").strip().lower()
+    return normalized in {"chinese", "中文", "zh", "zh-cn", "zh-tw", "zh-hans", "zh-hant"}
+
+
+def apply_chinese_placeholders_once(text: str) -> str:
+    updated = text
+    for src, dst in CHINESE_PLACEHOLDER_MAP.items():
+        updated = updated.replace(src, dst)
+    return updated
+
+
 def remove_accents_and_clean(s):
     # print("Original:", s)
     # Normalize to separate accents
@@ -344,6 +371,8 @@ This JSON will be automatically parsed, so ensure the format is precise."""
 # Using a template string to allow injection of the {page_limit} argument
 writeup_system_message_template = """You are an ambitious AI researcher who is looking to publish a paper that will contribute significantly to the field.
 Ensure that the paper is scientifically accurate, objective, and truthful. Accurately report the experimental results, even if they are negative or inconclusive.
+Write all narrative manuscript text in {language}. Do not switch narrative text to other natural languages.
+Keep LaTeX commands, citation keys, BibTeX structure, and package/command syntax unchanged.
 You are planning to submit to a top-tier ML conference, which has guidelines:
 - The main paper is limited to {page_limit} pages, including all figures and tables, but excluding references, the impact statement, and optional appendices. In general, try to use the available space and include all relevant information.
 - The main paper should be double-column format, while the appendices can be in single-column format. When in double column format, make sure that tables and figures are correctly placed.
@@ -408,6 +437,7 @@ When returning final code, place it in fenced triple backticks with 'latex' synt
 """
 
 writeup_prompt = """Your goal is to write up the following idea:
+Narrative text must be written in {language}. Do not switch narrative text to other natural languages.
 
 ```markdown
 {idea_text}
@@ -460,6 +490,7 @@ def perform_writeup(
     big_model="o1-2024-12-17",
     n_writeup_reflections=3,
     page_limit=8,
+    language="English",
 ):
     compile_attempt = 0
     base_pdf_file = osp.join(base_folder, f"{osp.basename(base_folder)}")
@@ -515,6 +546,13 @@ def perform_writeup(
         writeup_file = osp.join(latex_folder, "template.tex")
         with open(writeup_file, "r") as f:
             writeup_text = f.read()
+
+        if is_chinese_language(language):
+            updated_writeup_text = apply_chinese_placeholders_once(writeup_text)
+            if updated_writeup_text != writeup_text:
+                with open(writeup_file, "w") as f:
+                    f.write(updated_writeup_text)
+                writeup_text = updated_writeup_text
 
         # Gather plot filenames from figures/ folder
         figures_dir = osp.join(base_folder, "figures")
@@ -618,7 +656,8 @@ def perform_writeup(
 
         # Construct final prompt for big model, placing the figure descriptions alongside the plot list
         big_model_system_message = writeup_system_message_template.format(
-            page_limit=page_limit
+            page_limit=page_limit,
+            language=language,
         )
         big_client, big_client_model = create_client(big_model)
         with open(writeup_file, "r") as f:
@@ -631,6 +670,7 @@ def perform_writeup(
             plot_list=", ".join(plot_names),
             latex_writeup=writeup_text,
             plot_descriptions=plot_descriptions_str,
+            language=language,
         )
 
         response, msg_history = get_response_from_llm(
@@ -684,6 +724,7 @@ def perform_writeup(
             ).read()
 
             reflection_prompt = f"""
+Maintain manuscript narrative language as {language}. Do not switch narrative text to other natural languages.
 Now let's reflect and identify any issues (including but not limited to):
 1) Are there any LaTeX syntax errors or style violations we can fix? Refer to the chktex output below.
 2) Is the writing clear, and scientifically rigorous?

@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 
 from .journal import Node, Journal
@@ -300,10 +301,20 @@ def annotate_history(journal, cfg=None):
 def overall_summarize(journals, cfg=None):
     from concurrent.futures import ThreadPoolExecutor
 
-    def process_stage(idx, stage_tuple):
+    stage_tuples = list(journals)
+
+    def get_main_stage_index(stage_name):
+        numbers = [int(n) for n in re.findall(r"\d+", stage_name)]
+        if not numbers:
+            return None
+        return numbers[0]
+
+    def process_stage(stage_tuple):
         stage_name, journal = stage_tuple
         annotate_history(journal, cfg=cfg)
-        if idx in [1, 2]:
+        main_stage_idx = get_main_stage_index(stage_name)
+
+        if main_stage_idx in [2, 3]:
             best_node = journal.get_best_node(cfg=cfg)
             # get multi-seed results and aggregater node
             child_nodes = best_node.children
@@ -323,22 +334,23 @@ def overall_summarize(journals, cfg=None):
                         get_node_log(n) for n in multi_seed_nodes
                     ],
                 }
-            else:
-                return {
-                    "best node": get_node_log(best_node),
-                    "best node with different seeds": [
-                        get_node_log(n) for n in multi_seed_nodes
-                    ],
-                    "aggregated results of nodes with different seeds": get_node_log(
-                        agg_node
-                    ),
-                }
-        elif idx == 3:
+            return {
+                "best node": get_node_log(best_node),
+                "best node with different seeds": [
+                    get_node_log(n) for n in multi_seed_nodes
+                ],
+                "aggregated results of nodes with different seeds": get_node_log(
+                    agg_node
+                ),
+            }
+
+        if main_stage_idx == 4:
             good_leaf_nodes = [
                 n for n in journal.good_nodes if n.is_leaf and n.ablation_name
             ]
             return [get_node_log(n) for n in good_leaf_nodes]
-        elif idx == 0:
+
+        if main_stage_idx == 1:
             if cfg.agent.get("summary", None) is not None:
                 model = cfg.agent.summary.get("model", "")
             else:
@@ -347,17 +359,34 @@ def overall_summarize(journals, cfg=None):
             summary_json = get_stage_summary(journal, stage_name, model, client)
             return summary_json
 
+        return None
+
     from tqdm import tqdm
 
     with ThreadPoolExecutor() as executor:
         results = list(
             tqdm(
-                executor.map(process_stage, range(len(list(journals))), journals),
+                executor.map(process_stage, stage_tuples),
                 desc="Processing stages",
-                total=len(list(journals)),
+                total=len(stage_tuples),
             )
         )
-        draft_summary, baseline_summary, research_summary, ablation_summary = results
+
+    draft_summary = {}
+    baseline_summary = {}
+    research_summary = {}
+    ablation_summary = []
+
+    for (stage_name, _), result in zip(stage_tuples, results):
+        main_stage_idx = get_main_stage_index(stage_name)
+        if main_stage_idx == 1 and result is not None:
+            draft_summary = result
+        elif main_stage_idx == 2 and result is not None:
+            baseline_summary = result
+        elif main_stage_idx == 3 and result is not None:
+            research_summary = result
+        elif main_stage_idx == 4 and result is not None:
+            ablation_summary = result
 
     return draft_summary, baseline_summary, research_summary, ablation_summary
 

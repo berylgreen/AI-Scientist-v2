@@ -30,6 +30,33 @@ from ai_scientist.perform_vlm_review import (
 from ai_scientist.vlm import create_client as create_vlm_client
 
 
+CHINESE_PLACEHOLDER_MAP = {
+    "TITLE HERE": "在此填写标题",
+    "ABSTRACT HERE": "在此填写摘要",
+    "INTRO HERE": "在此填写引言",
+    "RELATED WORK HERE": "在此填写相关工作",
+    "BACKGROUND HERE": "在此填写背景",
+    "METHOD HERE": "在此填写方法",
+    "EXPERIMENTAL SETUP HERE": "在此填写实验设置",
+    "RESULTS HERE": "在此填写实验结果",
+    "PLEASE FILL IN CAPTION HERE": "在此填写图注",
+    "CONCLUSIONS HERE": "在此填写结论",
+    "APPENDIX TEXT": "在此填写附录内容",
+}
+
+
+def is_chinese_language(language: str) -> bool:
+    normalized = (language or "").strip().lower()
+    return normalized in {"chinese", "中文", "zh", "zh-cn", "zh-tw", "zh-hans", "zh-hant"}
+
+
+def apply_chinese_placeholders_once(text: str) -> str:
+    updated = text
+    for src, dst in CHINESE_PLACEHOLDER_MAP.items():
+        updated = updated.replace(src, dst)
+    return updated
+
+
 def remove_accents_and_clean(s):
     # Normalize to separate accents
     nfkd_form = unicodedata.normalize("NFKD", s)
@@ -45,44 +72,77 @@ def remove_accents_and_clean(s):
 def compile_latex(cwd, pdf_file, timeout=30):
     print("GENERATING LATEX")
 
-    commands = [
+    def _run_commands(commands):
+        for command in commands:
+            try:
+                result = subprocess.run(
+                    command,
+                    cwd=cwd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=timeout,
+                )
+                print("Standard Output:\n", result.stdout)
+                print("Standard Error:\n", result.stderr)
+            except subprocess.TimeoutExpired:
+                print(
+                    f"EXCEPTION in compile_latex: LaTeX timed out after {timeout} seconds."
+                )
+                print(traceback.format_exc())
+            except subprocess.CalledProcessError:
+                print(
+                    f"EXCEPTION in compile_latex: Error running command {' '.join(command)}"
+                )
+                print(traceback.format_exc())
+
+    pdflatex_commands = [
         ["pdflatex", "-interaction=nonstopmode", "template.tex"],
         ["bibtex", "template"],
         ["pdflatex", "-interaction=nonstopmode", "template.tex"],
         ["pdflatex", "-interaction=nonstopmode", "template.tex"],
     ]
+    _run_commands(pdflatex_commands)
 
-    for command in commands:
-        try:
-            result = subprocess.run(
-                command,
-                cwd=cwd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=timeout,
-            )
-            print("Standard Output:\n", result.stdout)
-            print("Standard Error:\n", result.stderr)
-        except subprocess.TimeoutExpired:
-            print(
-                f"EXCEPTION in compile_latex: LaTeX timed out after {timeout} seconds."
-            )
-            print(traceback.format_exc())
-        except subprocess.CalledProcessError:
-            print(
-                f"EXCEPTION in compile_latex: Error running command {' '.join(command)}"
-            )
-            print(traceback.format_exc())
+    generated_pdf = osp.join(cwd, "template.pdf")
+    if not osp.exists(generated_pdf):
+        print("pdflatex did not produce template.pdf, trying xelatex fallback...")
+        xelatex_bin = shutil.which("xelatex")
+        if xelatex_bin is not None:
+            xelatex_commands = [
+                ["xelatex", "-interaction=nonstopmode", "template.tex"],
+                ["bibtex", "template"],
+                ["xelatex", "-interaction=nonstopmode", "template.tex"],
+                ["xelatex", "-interaction=nonstopmode", "template.tex"],
+            ]
+            _run_commands(xelatex_commands)
+        else:
+            print("xelatex not found; skip xelatex fallback.")
+
+    if not osp.exists(generated_pdf):
+        print("xelatex did not produce template.pdf, trying lualatex fallback...")
+        lualatex_bin = shutil.which("lualatex")
+        if lualatex_bin is not None:
+            lualatex_commands = [
+                ["lualatex", "-interaction=nonstopmode", "template.tex"],
+                ["bibtex", "template"],
+                ["lualatex", "-interaction=nonstopmode", "template.tex"],
+                ["lualatex", "-interaction=nonstopmode", "template.tex"],
+            ]
+            _run_commands(lualatex_commands)
+        else:
+            print("lualatex not found; skip lualatex fallback.")
 
     print("FINISHED GENERATING LATEX")
 
     try:
-        shutil.move(osp.join(cwd, "template.pdf"), pdf_file)
+        shutil.move(generated_pdf, pdf_file)
+        return True
     except FileNotFoundError:
         print("Failed to rename PDF.")
         print("EXCEPTION in compile_latex while moving PDF:")
         print(traceback.format_exc())
+        return False
 
 
 def is_header_or_footer(line):
@@ -533,6 +593,8 @@ This JSON will be automatically parsed, so ensure the format is precise."""
 writeup_system_message_template = """You are an ambitious AI researcher who is looking to publish a paper to the "I Can't Believe It's Not Better" (ICBINB) Workshop at ICLR 2025.
 This workshop aims to highlight real-world pitfalls, challenges, and negative or inconclusive results in deep learning, encouraging open discussion.
 You must accurately represent the results of the experiments.
+Write all narrative manuscript text in {language}. Do not switch narrative text to other natural languages.
+Keep LaTeX commands, citation keys, BibTeX structure, and package/command syntax unchanged.
 The main paper is limited to {page_limit} pages in single-column format, not counting references. In general, try to use the available space and include all relevant information.
 DO NOT USE MORE THAN {page_limit} PAGES FOR THE MAIN TEXT.
 MINIMIZE THE USAGE OF ITEMIZE OR ENUMERATE. ONLY USE THEM IF THEY ARE ABSOLUTELY NECESSARY AND CONTAIN SUBSTANTIAL INFORMATION.
@@ -600,6 +662,7 @@ When returning final code, place it in fenced triple backticks with 'latex' synt
 """
 
 writeup_prompt = """Your goal is to write up the following idea:
+Narrative text must be written in {language}. Do not switch narrative text to other natural languages.
 
 ```markdown
 {idea_text}
@@ -863,6 +926,7 @@ def perform_writeup(
     big_model="o1-2024-12-17",
     n_writeup_reflections=3,
     page_limit=4,
+    language="English",
 ):
     pdf_file = osp.join(base_folder, f"{osp.basename(base_folder)}.pdf")
     latex_folder = osp.join(base_folder, "latex")
@@ -898,6 +962,13 @@ def perform_writeup(
         with open(writeup_file, "r") as f:
             writeup_text = f.read()
 
+        if is_chinese_language(language):
+            updated_writeup_text = apply_chinese_placeholders_once(writeup_text)
+            if updated_writeup_text != writeup_text:
+                with open(writeup_file, "w") as f:
+                    f.write(updated_writeup_text)
+                writeup_text = updated_writeup_text
+
         # Gather plot filenames from figures/ folder
         figures_dir = osp.join(base_folder, "figures")
         plot_names = []
@@ -916,8 +987,8 @@ def perform_writeup(
             aggregator_code = "No aggregator script found."
 
         if no_writing:
-            compile_latex(latex_folder, pdf_file)
-            return osp.exists(pdf_file)
+            compile_ok = compile_latex(latex_folder, pdf_file)
+            return compile_ok and osp.exists(pdf_file)
 
         # If no citations provided, try to load from cache first
         if citations_text is None:
@@ -948,6 +1019,9 @@ def perform_writeup(
             content = content.replace(pattern_end, f"\n{citations_text}{pattern_end}")
             with open(writeup_file, "w") as f:
                 f.write(content)
+
+        vlm_client = None
+        vlm_model = None
 
         # Generate VLM-based descriptions
         try:
@@ -980,7 +1054,8 @@ def perform_writeup(
             plot_descriptions_str = "No descriptions available."
 
         big_model_system_message = writeup_system_message_template.format(
-            page_limit=page_limit
+            page_limit=page_limit,
+            language=language,
         )
         big_client, big_client_model = create_client(big_model)
         with open(writeup_file, "r") as f:
@@ -993,6 +1068,7 @@ def perform_writeup(
             plot_list=", ".join(plot_names),
             latex_writeup=writeup_text,
             plot_descriptions=plot_descriptions_str,
+            language=language,
         )
 
         response, msg_history = get_response_from_llm(
@@ -1030,17 +1106,25 @@ def perform_writeup(
             )
             # Compile current version before reflection
             print(f"[green]Compiling PDF for reflection {i+1}...[/green]")
-            compile_latex(latex_folder, reflection_pdf)
+            compile_ok = compile_latex(latex_folder, reflection_pdf)
+            if not compile_ok or not osp.exists(reflection_pdf):
+                print(f"Skipping reflection {i+1}: PDF compilation failed.")
+                return False
 
-            review_img_cap_ref = perform_imgs_cap_ref_review(
-                vlm_client, vlm_model, reflection_pdf
-            )
+            if vlm_client is None or vlm_model is None:
+                print("Skipping VLM-based reflection: VLM client is unavailable.")
+                review_img_cap_ref = {}
+                analysis_duplicate_figs = "No duplicate figure analysis (VLM unavailable)."
+            else:
+                review_img_cap_ref = perform_imgs_cap_ref_review(
+                    vlm_client, vlm_model, reflection_pdf
+                )
 
-            # Detect duplicate figures between main text and appendix
-            analysis_duplicate_figs = detect_duplicate_figures(
-                vlm_client, vlm_model, reflection_pdf
-            )
-            print(analysis_duplicate_figs)
+                # Detect duplicate figures between main text and appendix
+                analysis_duplicate_figs = detect_duplicate_figures(
+                    vlm_client, vlm_model, reflection_pdf
+                )
+                print(analysis_duplicate_figs)
 
             # Get reflection_page_info
             reflection_page_info = get_reflection_page_info(reflection_pdf, page_limit)
@@ -1050,6 +1134,7 @@ def perform_writeup(
             ).read()
 
             reflection_prompt = f"""
+Maintain manuscript narrative language as {language}. Do not switch narrative text to other natural languages.
 Now let's reflect and identify any issues (including but not limited to):
 1) Are there any LaTeX syntax errors or style violations we can fix? Refer to the chktex output below.
 2) Is the writing clear, and scientifically rigorous for a workshop focusing on real-world pitfalls?
@@ -1112,7 +1197,12 @@ Ensure proper citation usage:
                     with open(writeup_file, "w") as fo:
                         fo.write(final_text)
 
-                    compile_latex(latex_folder, reflection_pdf)
+                    compile_ok = compile_latex(latex_folder, reflection_pdf)
+                    if not compile_ok or not osp.exists(reflection_pdf):
+                        print(
+                            f"Skipping reflection {i+1}: PDF compilation failed after text reflection update."
+                        )
+                        return False
                 else:
                     print(f"No changes in reflection step {i+1}.")
                     break
@@ -1121,10 +1211,14 @@ Ensure proper citation usage:
                 break
             # Get new reflection_page_info
             reflection_page_info = get_reflection_page_info(reflection_pdf, page_limit)
-            review_img_selection = perform_imgs_cap_ref_review_selection(
-                vlm_client, vlm_model, reflection_pdf, reflection_page_info
-            )
-            img_reflection_prompt = f"""Now let's reflect on
+            if vlm_client is None or vlm_model is None:
+                review_img_selection = "No figure-selection review (VLM unavailable)."
+            else:
+                review_img_selection = perform_imgs_cap_ref_review_selection(
+                    vlm_client, vlm_model, reflection_pdf, reflection_page_info
+                )
+            img_reflection_prompt = f"""Maintain manuscript narrative language as {language}. Do not switch narrative text to other natural languages.
+Now let's reflect on
 The following figures are currently used in the paper: {sorted(used_figs)}
 The following figures are available in the folder but not used in the LaTeX: {sorted(unused_figs)}
 
@@ -1179,7 +1273,12 @@ If you believe you are done with reflection, simply say: "I am done"."""
                     with open(writeup_file, "w") as fo:
                         fo.write(final_text)
 
-                    compile_latex(latex_folder, reflection_pdf)
+                    compile_ok = compile_latex(latex_folder, reflection_pdf)
+                    if not compile_ok or not osp.exists(reflection_pdf):
+                        print(
+                            f"Skipping reflection {i+1}: PDF compilation failed after figure reflection update."
+                        )
+                        return False
                 else:
                     print(f"No changes in reflection step {i+1}.")
                     break
@@ -1193,7 +1292,8 @@ If you believe you are done with reflection, simply say: "I am done"."""
         # Get new reflection_page_info
         reflection_page_info = get_reflection_page_info(reflection_pdf, page_limit)
 
-        final_reflection_prompt = """{reflection_page_info}
+        final_reflection_prompt = f"""Maintain manuscript narrative language as {language}. Do not switch narrative text to other natural languages.
+{reflection_page_info}
 USE MINIMAL EDITS TO OPTIMIZE THE PAGE LIMIT USAGE."""
         reflection_response, msg_history = get_response_from_llm(
             prompt=final_reflection_prompt,
@@ -1231,7 +1331,10 @@ USE MINIMAL EDITS TO OPTIMIZE THE PAGE LIMIT USAGE."""
                 with open(writeup_file, "w") as fo:
                     fo.write(final_text)
 
-                compile_latex(latex_folder, reflection_pdf)
+                compile_ok = compile_latex(latex_folder, reflection_pdf)
+                if not compile_ok or not osp.exists(reflection_pdf):
+                    print("Skipping final page-limit reflection: PDF compilation failed.")
+                    return False
             else:
                 print(f"No changes in reflection page step.")
 
@@ -1285,6 +1388,7 @@ if __name__ == "__main__":
             big_model=args.big_model,
             n_writeup_reflections=args.writeup_reflections,
             page_limit=args.page_limit,
+            language="English",
         )
         if not success:
             print("Writeup process did not complete successfully.")

@@ -56,10 +56,13 @@ def extract_code(text):
     """Extract python code blocks from the text."""
     parsed_codes = []
 
-    # When code is in a text or python block
-    matches = re.findall(r"```(python)?\n*(.*?)\n*```", text, re.DOTALL)
-    for match in matches:
-        code_block = match[1]
+    # When code is inside fenced markdown blocks (```python, ```py, ```Python, or plain ```)
+    matches = re.findall(
+        r"```(?:[a-zA-Z0-9_+\-.]+)?\s*\n?(.*?)```",
+        text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    for code_block in matches:
         parsed_codes.append(code_block)
 
     # When the entire text is code or backticks of the code block is missing

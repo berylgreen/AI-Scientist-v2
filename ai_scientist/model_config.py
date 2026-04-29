@@ -7,4 +7,5 @@ To change the default model, set the DEFAULT_MODEL environment variable
 """
 import os
 
-DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "gpt-5.3-codex")
+DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "gpt-5.5")
+DEFAULT_VLM_MODEL = os.environ.get("DEFAULT_VLM_MODEL", "gpt-image-2")

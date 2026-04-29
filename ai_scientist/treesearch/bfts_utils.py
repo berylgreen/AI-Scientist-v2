@@ -2,7 +2,7 @@ import os
 import os.path as osp
 import shutil
 import yaml
-from ai_scientist.model_config import DEFAULT_MODEL
+from ai_scientist.model_config import DEFAULT_MODEL, DEFAULT_VLM_MODEL
 
 
 def idea_to_markdown(data: dict, output_path: str, load_code: str) -> None:
@@ -45,13 +45,17 @@ def idea_to_markdown(data: dict, output_path: str, load_code: str) -> None:
 
 def _override_models_in_config(config: dict, model_name: str) -> None:
     """
-    Recursively override all 'model' keys in the config dict with model_name.
-    This ensures that the DEFAULT_MODEL env var takes precedence over any
-    hardcoded model names in bfts_config.yaml.
+    Recursively override all 'model' keys in the config dict with model_name,
+    except agent.vlm_feedback.model, which should use DEFAULT_VLM_MODEL.
     """
     for key, value in config.items():
         if isinstance(value, dict):
-            _override_models_in_config(value, model_name)
+            if key == "vlm_feedback":
+                if isinstance(value.get("model"), str):
+                    value["model"] = DEFAULT_VLM_MODEL
+                _override_models_in_config(value, model_name)
+            else:
+                _override_models_in_config(value, model_name)
         elif key == "model" and isinstance(value, str):
             config[key] = model_name
 

@@ -50,6 +50,12 @@ def parse_arguments():
         help="Type of writeup to generate (normal=8 page, icbinb=4 page)",
     )
     parser.add_argument(
+        "--writeup-language",
+        type=str,
+        default="English",
+        help="Target natural language for manuscript narrative text (e.g., English, Chinese)",
+    )
+    parser.add_argument(
         "--load_ideas",
         type=str,
         default="ideas/i_cant_believe_its_not_better.json",
@@ -141,28 +147,29 @@ def get_available_gpus(gpu_ids=None):
 def find_pdf_path_for_review(idea_dir):
     pdf_files = [f for f in os.listdir(idea_dir) if f.endswith(".pdf")]
     reflection_pdfs = [f for f in pdf_files if "reflection" in f]
-    if reflection_pdfs:
-        # First check if there's a final version
-        final_pdfs = [f for f in reflection_pdfs if "final" in f.lower()]
-        if final_pdfs:
-            # Use the final version if available
-            pdf_path = osp.join(idea_dir, final_pdfs[0])
-        else:
-            # Try to find numbered reflections
-            reflection_nums = []
-            for f in reflection_pdfs:
-                match = re.search(r"reflection[_.]?(\d+)", f)
-                if match:
-                    reflection_nums.append((int(match.group(1)), f))
+    if not reflection_pdfs:
+        return None
 
-            if reflection_nums:
-                # Get the file with the highest reflection number
-                highest_reflection = max(reflection_nums, key=lambda x: x[0])
-                pdf_path = osp.join(idea_dir, highest_reflection[1])
-            else:
-                # Fall back to the first reflection PDF if no numbers found
-                pdf_path = osp.join(idea_dir, reflection_pdfs[0])
-    return pdf_path
+    # First check if there's a final version
+    final_pdfs = [f for f in reflection_pdfs if "final" in f.lower()]
+    if final_pdfs:
+        # Use the final version if available
+        return osp.join(idea_dir, final_pdfs[0])
+
+    # Try to find numbered reflections
+    reflection_nums = []
+    for f in reflection_pdfs:
+        match = re.search(r"reflection[_.]?(\d+)", f)
+        if match:
+            reflection_nums.append((int(match.group(1)), f))
+
+    if reflection_nums:
+        # Get the file with the highest reflection number
+        highest_reflection = max(reflection_nums, key=lambda x: x[0])
+        return osp.join(idea_dir, highest_reflection[1])
+
+    # Fall back to the first reflection PDF if no numbers found
+    return osp.join(idea_dir, reflection_pdfs[0])
 
 
 @contextmanager
@@ -285,6 +292,7 @@ if __name__ == "__main__":
                     big_model=args.model_writeup,
                     page_limit=8,
                     citations_text=citations_text,
+                    language=args.writeup_language,
                 )
             else:
                 writeup_success = perform_icbinb_writeup(
@@ -293,6 +301,7 @@ if __name__ == "__main__":
                     big_model=args.model_writeup,
                     page_limit=4,
                     citations_text=citations_text,
+                    language=args.writeup_language,
                 )
             if writeup_success:
                 break
@@ -305,7 +314,7 @@ if __name__ == "__main__":
     if not args.skip_review and not args.skip_writeup:
         # Perform paper review if the paper exists
         pdf_path = find_pdf_path_for_review(idea_dir)
-        if os.path.exists(pdf_path):
+        if pdf_path is not None and os.path.exists(pdf_path):
             print("Paper found at: ", pdf_path)
             paper_content = load_paper(pdf_path)
             client, client_model = create_client(args.model_review)
@@ -318,10 +327,17 @@ if __name__ == "__main__":
             with open(osp.join(idea_dir, "review_img_cap_ref.json"), "w") as f:
                 json.dump(review_img_cap_ref, f, indent=4)
             print("Paper review completed.")
+        else:
+            print("No reflection PDF found; skipping paper review.")
 
     print("Start cleaning up processes")
     # Kill all mp and torch processes associated with this experiment
-    import psutil
+    try:
+        import psutil
+    except ImportError:
+        print("psutil not available; skipping process cleanup.")
+        sys.exit(0)
+
     import signal
 
     # Get the current process and all its children
@@ -358,13 +374,6 @@ if __name__ == "__main__":
                     proc.kill()
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired):
             continue
-
-    # Finally, terminate the current process
-    # current_process.send_signal(signal.SIGTERM)
-    # try:
-    #     current_process.wait(timeout=3)
-    # except psutil.TimeoutExpired:
-    #     current_process.kill()
 
     # exit the program
     sys.exit(0)
