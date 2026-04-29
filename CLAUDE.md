@@ -81,6 +81,18 @@ python launch_scientist_bfts.py \
 - 设为 `Chinese` 时，两条写作链路（normal / icbinb）都会强制叙述性正文使用中文。
 - 同时在写作前会对 `latex/template.tex` 的英文占位文本做中文预置（仅在中文模式触发），以降低英文先验。
 
+### 稳定性修复与运行注意（本轮新增）
+- 代码提取鲁棒性：`ai_scientist/treesearch/utils/response.py` 的 `extract_code` 已支持通用 fenced code block（如 ```python / ```py / ``` 等），降低 `Plan + code extraction failed` 重试概率。
+- ICBINB 写作编译链路：`ai_scientist/perform_icbinb_writeup.py` 的 `compile_latex` 改为多编译器回退（`pdflatex -> xelatex -> lualatex`），并返回编译是否成功。
+- reflection 防护：写作反思阶段在每次 `compile_latex` 后都会检查 PDF 是否存在；若编译失败会立即短路返回，避免后续连锁异常。
+- VLM 可用性防护：当 VLM client 初始化失败时，自动跳过图像反思/重复图检测相关调用，避免 `vlm_client` 未绑定异常。
+- review 入口健壮性：`launch_scientist_bfts.py` 的 `find_pdf_path_for_review` 在无 reflection PDF 时返回 `None`，调用端会安全跳过 review，避免 `pdf_path` 未绑定异常。
+- 清理阶段兼容性：`launch_scientist_bfts.py` 清理进程时对 `psutil` 做了可选依赖保护；缺失时仅跳过清理，不再导致流程末尾失败退出。
+- 运行建议：若本地 Python 环境缺少 `torch/psutil` 等依赖，优先使用 Docker 子命令 `ideation` / `bfts` 执行端到端流程。
+- 模型配置建议：可通过环境变量统一设置默认模型，例如：
+  - `DEFAULT_MODEL=gpt-5.5`
+  - `DEFAULT_VLM_MODEL=gpt-image-2`
+
 ### Lint 与测试
 当前仓库未定义官方 lint/test 流程（未发现项目级测试配置或统一测试入口）。
 - 没有文档化的“全量测试”命令。
